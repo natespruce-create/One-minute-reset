@@ -1,14 +1,16 @@
-import streamlit as st
-import textwrap
+import os
+import json
 import re
+import textwrap
+import streamlit as st
 from PIL import Image
+import google.generativeai as genai
 
 # Colors by position requirement:
 # Top-left (blue) = Analytical
 # Bottom-left (green) = Practical
 # Top-right (yellow) = Creative
 # Bottom-right (red) = Relational
-
 COLORS = {
     "A": {"bg": "#2E6DA4", "fg": "white", "label": "Analytical"},   # Blue
     "B": {"bg": "#2AA876", "fg": "white", "label": "Practical"},    # Green
@@ -23,136 +25,83 @@ QUADRANT_PHRASES = {
     "D": "Who’s Involved",
 }
 
-STOPWORDS = {
-    "i","im","i'm","feel","feels","feeling","about","the","a","an","and","or","to","of","in","on","with","for","from",
-    "this","that","it","is","are","was","were","be","being","as","my","our","your","their","they","he","she",
-    "me","we","you","at","but","so","very","really","just","up","right","now"
-}
+def build_prompt(user_text: str) -> str:
+    return f"""
+You are an HBDI coach creating a 1-minute “4-Quadrant Reset”.
 
-EMOTION = ["stuck", "uncertain", "overwhelmed", "anxious", "worried", "panicked", "frustrated", "angry", "lost", "torn"]
-DECISION = ["choose", "decision", "decide", "between", "options", "option", "tradeoff", "which", "whether", "decision-making"]
-PRESSURE = ["deadline", "pressure", "limited", "time", "money", "constraints", "risk", "cant", "can't", "cannot"]
-PEOPLE = ["colleague", "team", "manager", "client", "customer", "partner", "people", "trust", "conflict"]
+User input (may be messy):
+{user_text}
 
-def pick_entities(text: str):
-    t = text.lower()
+Generate EXACTLY 4 short, warm, human coaching questions (one per quadrant), tailored to the specific meaning of the user input.
+Do NOT copy the user input verbatim. Do NOT use the same wording across quadrants.
 
-    # Collect keyword matches (max 3)
-    keywords = []
-    def add_if_present(key_list):
-        for k in key_list:
-            if k in t and k not in keywords:
-                keywords.append(k)
-    add_if_present(EMOTION)
-    add_if_present(DECISION)
-    add_if_present(PRESSURE)
-    add_if_present(PEOPLE)
+Quadrant meanings:
+A (Analytical / Gentle Clarity): observable facts vs assumptions
+B (Practical / Next Steps): smallest practical next step
+C (Creative / New Possibilities): new angle/options/reframes that open possibility
+D (Relational / Who’s Involved): who is impacted/missing and what they may need
 
-    # If nothing matched, fall back to a couple of meaningful nouns-ish tokens
-    if not keywords:
-        tokens = re.findall(r"[a-zA-Z']+", t)
-        tokens = [x for x in tokens if x not in STOPWORDS and len(x) >= 4]
-        # keep unique, first few
-        for x in tokens:
-            if x not in keywords:
-                keywords.append(x)
-            if len(keywords) >= 2:
-                break
+Hard constraints:
+- Output MUST be valid JSON only (no markdown, no commentary).
+- JSON keys must be: "A","B","C","D"
+- Each value must be 12–22 words, exactly one question (end with ?)
+- Make each question distinct (no repeated sentence starters).
 
-    # Keep at most 3
-    return keywords[:3]
+Return JSON:
+{{
+  "A": "...?",
+  "B": "...?",
+  "C": "...?",
+  "D": "...?"
+}}
+""".strip()
 
-import re
+@st.cache_data(show_spinner=False)
+def call_gemini_cached(user_text: str, model_id: str) -> dict:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("Missing GEMINI_API_KEY environment variable.")
 
-EMOTION = {"stuck","uncertain","overwhelmed","anxious","worried","panicked","frustrated","angry","lost","torn","depressed","sad","down"}
-DECISION = {"choose","decision","decide","between","options","option","tradeoff","which","whether","decision-making"}
-PRESSURE = {"deadline","pressure","limited","time","money","constraints","risk","can't","cant","cannot"}
-PEOPLE = {"colleague","team","manager","client","customer","partner","people","trust","conflict"}
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(model_id)
 
-def pick_keywords(text: str):
-    t = text.lower()
+    prompt = build_prompt(user_text)
+    resp = model.generate_content(
+        prompt,
+        generation_config=genai.types.GenerationConfig(
+            temperature=0.7,
+            top_p=0.95,
+            max_output_tokens=450,
+        ),
+    )
 
-    keywords = []
-    # Prefer the “useful” categories first
-    for group in (["emotion", EMOTION], ["decision", DECISION], ["pressure", PRESSURE], ["people", PEOPLE]):
-        _, vocab = group
-        for k in vocab:
-            if k in t and k not in keywords:
-                keywords.append(k)
-            if len(keywords) >= 3:
-                break
-        if len(keywords) >= 3:
-            break
+    text = (resp.text or "").strip()
 
-    # fallback: pick a couple meaningful tokens
-    if not keywords:
-        tokens = re.findall(r"[a-zA-Z']+", t)
-        tokens = [x for x in tokens if len(x) >= 4]
-        for x in tokens:
-            if x not in keywords:
-                keywords.append(x)
-            if len(keywords) >= 2:
-                break
+    # Parse JSON strictly
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        # Try to recover JSON if Gemini wrapped it
+        m = re.search(r"\{.*\}", text, re.S)
+        if not m:
+            raise RuntimeError("Gemini did not return JSON.")
+        data = json.loads(m.group(0))
 
-    return keywords[:3]
+    # Validate keys
+    for k in ["A", "B", "C", "D"]:
+        if k not in data:
+            raise RuntimeError(f"Gemini JSON missing key: {k}")
+        if not isinstance(data[k], str):
+            raise RuntimeError(f"Gemini value for {k} must be a string")
+        # simple sanity check: must end with '?'
+        if not data[k].strip().endswith("?"):
+            data[k] = data[k].strip() + "?"
 
-def reference_phrase(keywords):
-    """
-    Turn extracted keywords into a short, grammatical reference phrase
-    (without forcing "this depressed" style output).
-    """
-    if not keywords:
-        return "this situation"
-
-    # If the first keyword is an emotion-feeling, avoid awkward "this depressed"
-    if keywords[0] in EMOTION:
-        # If we also have a workplace cue, blend it
-        if len(keywords) > 1 and keywords[1] in PEOPLE:
-            return f"this feeling and workplace dynamic"
-        if len(keywords) > 1 and keywords[1] in PRESSURE:
-            return f"this feeling under pressure"
-        return "this feeling"
-
-    # If we have a people cue
-    if any(k in PEOPLE for k in keywords):
-        return "this working dynamic"
-
-    # If we have a pressure cue
-    if any(k in PRESSURE for k in keywords):
-        return "this pressured situation"
-
-    # If we have decision cue
-    if any(k in DECISION for k in keywords):
-        return "this decision"
-
-    return "this situation"
-
-def generate_questions(thought: str):
-    thought = (thought or "").strip() or "I feel stuck"
-    keywords = pick_keywords(thought)
-    ref = reference_phrase(keywords)
-
-    return {
-        # A: Analytic / Gentle Clarity
-        "A": f"Let’s steady this for a moment: what do you actually know is true about {ref} (not just what you fear)?",
-
-        # B: Practical / Next Steps
-        "B": f"One small step—what’s the kindest practical adjustment you could make next about {ref} in the next 10 minutes?",
-
-        # C: Creative / New Possibilities
-        "C": f"Give yourself some space: what’s a new angle or possibility for {ref} that you haven’t tried yet?",
-
-        # D: Relational / Who’s Involved
-        "D": f"Who needs to be brought into the picture for {ref} to shift—and who might be missing right now?"
-    }
-
-
-
-
+    return {k: data[k].strip() for k in ["A", "B", "C", "D"]}
 
 def card_html(q_key: str, prompt: str):
     c = COLORS[q_key]
-    wrapped = textwrap.fill(prompt, width=88)
+    wrapped = textwrap.fill(prompt, width=92)
     header = f"{c['label']} — {QUADRANT_PHRASES[q_key]}"
 
     return f"""
@@ -185,36 +134,43 @@ def main():
         st.warning("logo.png not found. Add it next to streamlit_app.py.")
 
     st.title("HBDI 4-Quadrant Reset (1-minute prompt)")
-    st.caption("Enter what’s on your mind. You’ll get 4 gentle questions to help you shift out of the stuck feeling.")
+    st.caption("Enter what’s on your mind. Gemini generates one tailored question per quadrant.")
 
     thought = st.text_input(
         "Your sentence or feeling",
-        placeholder='e.g., "I feel stuck choosing between two options"'
+        placeholder='e.g., "I feel uncertain about working with a colleague on a deadline"'
     )
 
-    if st.button("Generate 4 questions", type="primary"):
-        qs = generate_questions(thought)
+    model_id = os.getenv("GEMINI_MODEL", "gemini-3.1-flash")  # change to your exact Gemini 3.1 id if needed
 
-        # Build 2 rows so we can control top-left/top-right vs bottom-left/bottom-right.
+    if st.button("Generate 4 questions", type="primary"):
+        if not thought.strip():
+            st.error("Please enter a sentence or feeling first.")
+            return
+
+        with st.spinner("Thinking with Gemini..."):
+            qs = call_gemini_cached(thought.strip(), model_id)
+
+        # Layout: 2 rows
         top_left, top_right = st.columns(2, gap="medium")
         bottom_left, bottom_right = st.columns(2, gap="medium")
 
-        # Top row: Blue (Analytical) on left, Yellow (Creative) on right
+        # Top row: A (blue Analytical) left, C (yellow Creative) right
         with top_left:
-            st.markdown(card_html("A", qs["A"]), unsafe_allow_html=True)  # Top-left Blue = Analytical
+            st.markdown(card_html("A", qs["A"]), unsafe_allow_html=True)
         with top_right:
-            st.markdown(card_html("C", qs["C"]), unsafe_allow_html=True)  # Top-right Yellow = Creative
+            st.markdown(card_html("C", qs["C"]), unsafe_allow_html=True)
 
-        st.write("")  # spacing between rows
+        st.write("")
 
-        # Bottom row: Green (Practical) on left, Red (Relational) on right
+        # Bottom row: B (green Practical) left, D (red Relational) right
         with bottom_left:
-            st.markdown(card_html("B", qs["B"]), unsafe_allow_html=True)  # Bottom-left Green = Practical
+            st.markdown(card_html("B", qs["B"]), unsafe_allow_html=True)
         with bottom_right:
-            st.markdown(card_html("D", qs["D"]), unsafe_allow_html=True)  # Bottom-right Red = Relational
+            st.markdown(card_html("D", qs["D"]), unsafe_allow_html=True)
 
         st.divider()
-        st.success("Take 30–60 seconds. Scan A → C → B → D (by position), then choose one to explore first.")
+        st.success("Scan A → C → B → D, then pick one to explore first.")
 
 if __name__ == "__main__":
     main()

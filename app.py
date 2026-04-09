@@ -1,7 +1,6 @@
 import streamlit as st
 import textwrap
 
-# --- Quadrant theme colors (kept as-is) ---
 COLORS = {
     "A": {"bg": "#2E6DA4", "fg": "white", "label": "Analytic"},
     "B": {"bg": "#F1C232", "fg": "#1a1a1a", "label": "Practical"},
@@ -19,10 +18,11 @@ def generate_questions(thought: str):
         "D": f'If you could take a fresh, creative step—what else might be possible with “{thought}” (another angle, option, or constraint)?'
     }
 
-def card_html(q_key: str, prompt: str, title: str):
+def card_html(q_key: str, prompt: str):
     c = COLORS[q_key]
     wrapped = textwrap.fill(prompt, width=88)
 
+    # "Question" only (prevents repeating Analytic/Practical/etc twice)
     return f"""
     <div style="
         background-color: {c['bg']};
@@ -36,8 +36,9 @@ def card_html(q_key: str, prompt: str, title: str):
       <div style="font-weight: 800; font-size: 14px; margin-bottom: 8px; opacity: 0.95;">
         {q_key} — {c['label']}
       </div>
+
       <div style="font-size: 15px; line-height: 1.45; white-space: normal;">
-        <span style="font-weight: 750;">{title}</span>
+        <span style="font-weight: 750;">Question</span>
         <div style="height: 8px;"></div>
         {wrapped}
       </div>
@@ -70,15 +71,15 @@ def main():
 
         col1, col2 = st.columns(2, gap="medium")
         with col1:
-            st.markdown(card_html("A", qs["A"], "Analytic (gentle clarity)"), unsafe_allow_html=True)
+            st.markdown(card_html("A", qs["A"]), unsafe_allow_html=True)
         with col2:
-            st.markdown(card_html("B", qs["B"], "Practical (next step)"), unsafe_allow_html=True)
+            st.markdown(card_html("B", qs["B"]), unsafe_allow_html=True)
 
         col3, col4 = st.columns(2, gap="medium")
         with col3:
-            st.markdown(card_html("C", qs["C"], "Relational (who’s involved)"), unsafe_allow_html=True)
+            st.markdown(card_html("C", qs["C"]), unsafe_allow_html=True)
         with col4:
-            st.markdown(card_html("D", qs["D"], "Creative (new possibilities)"), unsafe_allow_html=True)
+            st.markdown(card_html("D", qs["D"]), unsafe_allow_html=True)
 
         st.divider()
         st.success("Take 30–60 seconds. Scan each question, then choose just one to explore first.")

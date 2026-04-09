@@ -13,7 +13,7 @@ COLORS = {
 EMOTION_WORDS = ["stuck", "overwhelmed", "anxious", "worried", "panicked", "frustrated", "angry", "uncertain", "lost", "torn"]
 DECISION_WORDS = ["choose", "decision", "decide", "between", "option", "options", "tradeoff", "which", "whether"]
 CONSTRAINT_WORDS = ["deadline", "pressure", "limited", "time", "money", "resource", "constraints", "risk", "can’t", "can't", "cannot"]
-RELATION_WORDS = ["team", "colleague", "manager", "client", "customer", "partner", "people", "relationship", "trust", "conflict", "impacted", "affected"]
+RELATION_WORDS = ["team", "colleague", "manager", "client", "customer", "partner", "people", "relationship", "trust", "conflict", "impacted", "affected", "colleague"]
 
 def sanitize(text: str) -> str:
     text = (text or "").strip()
@@ -43,54 +43,58 @@ def domain_from_flags(flags):
     return "general"
 
 def short_questions(thought: str):
-    thought = sanitize(thought) or "I feel stuck"
+    thought = sanitize(thought) or ""
     flags = detect_intents(thought)
     domain = domain_from_flags(flags)
-    q = f"“{thought}”"
 
-    # Keep them short (1 line-ish)
-    if domain == "decision_under_constraints":
-        return {
-            "A": f"What do I know for sure about {q}?",
-            "B": f"What is the next realistic adjustment for {q}?",
-            "C": f"Who is impacted by my decision in {q}?",
-            "D": f"What’s a creative option that fits the constraints for {q}?"
-        }
-    if domain == "decision":
-        return {
-            "A": f"What are the facts behind my choice in {q}?",
-            "B": f"What’s one practical step that clarifies my decision in {q}?",
-            "C": f"Who’s affected by the choice in {q}?",
-            "D": f"What else could I choose or frame in {q}?"
-        }
+    # Short, high-utility questions that do NOT paste the whole sentence back.
+    # We may reference "the situation" rather than echo the user input.
     if domain == "relationship":
         return {
-            "A": f"What do I know for sure about what’s happening in {q}?",
-            "B": f"What’s one practical move to improve this in {q}?",
-            "C": f"Who needs a voice/understanding in {q}?",
-            "D": f"What new way of working could help in {q}?"
+            "A": "What observable facts do I have (not assumptions) about the working dynamic?",
+            "B": "What’s one practical next step to clarify expectations or reduce uncertainty?",
+            "C": "What needs to be understood or agreed with the other person/team for trust to work?",
+            "D": "What alternate way of working (or framing) could make this easier?"
         }
+
+    if domain == "decision_under_constraints":
+        return {
+            "A": "What are the true constraints and the key facts I’m using to decide?",
+            "B": "What’s the next realistic action that reduces uncertainty about the decision?",
+            "C": "Who is impacted if I choose one option over another?",
+            "D": "What creative option appears if we treat constraints as design inputs?"
+        }
+
+    if domain == "decision":
+        return {
+            "A": "What facts vs beliefs am I relying on for this choice?",
+            "B": "What’s one practical step that helps me test the options quickly?",
+            "C": "Whose needs matter in this decision—and have I heard them?",
+            "D": "What else is possible beyond the two options I’m comparing?"
+        }
+
     if domain == "constraint_pressure":
         return {
-            "A": f"What’s true right now about {q} (not just worry)?",
-            "B": f"What can I adjust immediately to reduce pressure in {q}?",
-            "C": f"Who is affected by the pressure in {q}?",
-            "D": f"What else is possible without fighting the constraint in {q}?"
+            "A": "What’s truly true right now (observable) versus what I’m worried about?",
+            "B": "What can I adjust immediately to reduce pressure and create momentum?",
+            "C": "Who’s affected by the pressure—and what do they need from me?",
+            "D": "What reframe makes the problem feel more solvable?"
         }
+
     if domain == "emotion":
         return {
-            "A": f"What facts explain what I’m feeling in {q}?",
-            "B": f"What’s one practical adjustment that helps in {q}?",
-            "C": f"Who might be impacted by my feeling in {q}?",
-            "D": f"What reframe makes space for possibility in {q}?"
+            "A": "What facts are underneath this feeling?",
+            "B": "What’s one practical adjustment that would help me move 5% today?",
+            "C": "Who might be affected by how I respond right now?",
+            "D": "What’s a kinder reframe that opens a new option?"
         }
 
     # general fallback
     return {
-        "A": f"What do I know for sure about {q}?",
-        "B": f"What’s the next practical step for easing {q}?",
-        "C": f"Who is impacted or missing in {q}?",
-        "D": f"What else is possible if I shift perspective on {q}?"
+        "A": "What do I know for sure (observable facts), and what am I assuming?",
+        "B": "What’s one practical next step to reduce the stuck feeling?",
+        "C": "Who is impacted—or missing—from this picture?",
+        "D": "What’s another angle that makes progress possible?"
     }
 
 def card_block(q_key: str, prompt: str):
@@ -130,11 +134,11 @@ def main():
         st.warning(f"Logo not found. Ensure logo.png is next to the app file. ({e})")
 
     st.title("HBDI 4-Quadrant Reset (1-minute prompt)")
-    st.caption("One short question per quadrant. Prompts adapt to what you type—still HBDI-aligned.")
+    st.caption("One short question per quadrant. The questions interpret your input—without repeating it verbatim.")
 
     thought = st.text_input(
         "Your sentence or feeling",
-        placeholder='e.g., "I feel stuck choosing between two options under a deadline"'
+        placeholder='e.g., "I feel uncertain about working with a colleague"'
     )
 
     if st.button("Generate 4 questions", type="primary"):

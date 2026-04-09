@@ -23,14 +23,15 @@ QUADRANT_PHRASES = {
 }
 
 def generate_questions(thought: str):
-    thought = thought.strip() or "I feel stuck"
-
+    # Do NOT paste the user’s sentence back verbatim into the questions.
+    # We’ll keep it warm, short, and interpretive.
     return {
-        "A": f'Let’s get clear and gentle: what do you know for sure (observable facts) rather than assumptions about “{thought}”?',
-        "B": f'What’s one kind, practical next adjustment you can make right now to ease the stuck feeling about “{thought}”?',
-        "C": f'If you could take a fresh, creative step—what else might be possible with “{thought}” (another angle, option, or constraint)?',
-        "D": f'Who might be affected by “{thought}”, or who could be missing from the picture (and what might they be feeling)?',
+        "A": "Let’s get clear and gentle: what do you know for sure (observable facts) right now, rather than assumptions?",
+        "B": "What’s one kind, practical next adjustment you can make right now to ease the stuck feeling?",
+        "C": "If you could take a fresh, creative step—what else might be possible right now (another angle, option, or constraint)?",
+        "D": "Who might be affected by this—who could be missing from the picture (and what might they be feeling)?",
     }
+
 
 def card_html(q_key: str, prompt: str):
     c = COLORS[q_key]

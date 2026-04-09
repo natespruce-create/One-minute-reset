@@ -1,101 +1,16 @@
-import streamlit as st
+import os
 import textwrap
-import re
+import streamlit as st
+import google.generativeai as genai
 from PIL import Image
 
+# ---------- Quadrant theme colors ----------
 COLORS = {
     "A": {"bg": "#2E6DA4", "fg": "white", "label": "Analytic"},
     "B": {"bg": "#F1C232", "fg": "#1a1a1a", "label": "Practical"},
     "C": {"bg": "#2AA876", "fg": "white", "label": "Relational"},
     "D": {"bg": "#E74C3C", "fg": "white", "label": "Creative"},
 }
-
-EMOTION_WORDS = ["stuck", "overwhelmed", "anxious", "worried", "panicked", "frustrated", "angry", "uncertain", "lost", "torn"]
-DECISION_WORDS = ["choose", "decision", "decide", "between", "option", "options", "tradeoff", "which", "whether"]
-CONSTRAINT_WORDS = ["deadline", "pressure", "limited", "time", "money", "resource", "constraints", "risk", "can’t", "can't", "cannot"]
-RELATION_WORDS = ["team", "colleague", "manager", "client", "customer", "partner", "people", "relationship", "trust", "conflict", "impacted", "affected", "colleague"]
-
-def sanitize(text: str) -> str:
-    text = (text or "").strip()
-    text = re.sub(r"\s+", " ", text)
-    return text
-
-def detect_intents(text: str):
-    t = text.lower()
-    return {
-        "emotion": any(w in t for w in EMOTION_WORDS),
-        "decision": any(w in t for w in DECISION_WORDS),
-        "constraint": any(w in t for w in CONSTRAINT_WORDS),
-        "relationship": any(w in t for w in RELATION_WORDS),
-    }
-
-def domain_from_flags(flags):
-    if flags["decision"] and flags["constraint"]:
-        return "decision_under_constraints"
-    if flags["decision"]:
-        return "decision"
-    if flags["relationship"]:
-        return "relationship"
-    if flags["constraint"]:
-        return "constraint_pressure"
-    if flags["emotion"]:
-        return "emotion"
-    return "general"
-
-def short_questions(thought: str):
-    thought = sanitize(thought) or ""
-    flags = detect_intents(thought)
-    domain = domain_from_flags(flags)
-
-    # Short, high-utility questions that do NOT paste the whole sentence back.
-    # We may reference "the situation" rather than echo the user input.
-    if domain == "relationship":
-        return {
-            "A": "What observable facts do I have (not assumptions) about the working dynamic?",
-            "B": "What’s one practical next step to clarify expectations or reduce uncertainty?",
-            "C": "What needs to be understood or agreed with the other person/team for trust to work?",
-            "D": "What alternate way of working (or framing) could make this easier?"
-        }
-
-    if domain == "decision_under_constraints":
-        return {
-            "A": "What are the true constraints and the key facts I’m using to decide?",
-            "B": "What’s the next realistic action that reduces uncertainty about the decision?",
-            "C": "Who is impacted if I choose one option over another?",
-            "D": "What creative option appears if we treat constraints as design inputs?"
-        }
-
-    if domain == "decision":
-        return {
-            "A": "What facts vs beliefs am I relying on for this choice?",
-            "B": "What’s one practical step that helps me test the options quickly?",
-            "C": "Whose needs matter in this decision—and have I heard them?",
-            "D": "What else is possible beyond the two options I’m comparing?"
-        }
-
-    if domain == "constraint_pressure":
-        return {
-            "A": "What’s truly true right now (observable) versus what I’m worried about?",
-            "B": "What can I adjust immediately to reduce pressure and create momentum?",
-            "C": "Who’s affected by the pressure—and what do they need from me?",
-            "D": "What reframe makes the problem feel more solvable?"
-        }
-
-    if domain == "emotion":
-        return {
-            "A": "What facts are underneath this feeling?",
-            "B": "What’s one practical adjustment that would help me move 5% today?",
-            "C": "Who might be affected by how I respond right now?",
-            "D": "What’s a kinder reframe that opens a new option?"
-        }
-
-    # general fallback
-    return {
-        "A": "What do I know for sure (observable facts), and what am I assuming?",
-        "B": "What’s one practical next step to reduce the stuck feeling?",
-        "C": "Who is impacted—or missing—from this picture?",
-        "D": "What’s another angle that makes progress possible?"
-    }
 
 def card_block(q_key: str, prompt: str):
     c = COLORS[q_key]
@@ -123,6 +38,62 @@ def card_block(q_key: str, prompt: str):
         unsafe_allow_html=True
     )
 
+def build_prompt(user_text: str):
+    return f"""
+You are an HBDI coach creating a 1-minute “4-Quadrant Reset”.
+Input from the user (may be messy or incomplete):
+\"\"\"{user_text}\"\"\"
+
+Task:
+Return EXACTLY 4 short, warm, friendly coaching questions—one for each quadrant:
+- A (Analytic): facts/what’s true/observable clarity; avoid repeating the whole input verbatim
+- B (Practical): next adjustment/what to do now; make it actionable
+- C (Relational): impacted people / who is missing / what needs trust/understanding
+- D (Creative): new angle/options/reframes/possibility thinking
+
+Hard rules:
+- Output format must be JSON with keys: "A","B","C","D"
+- Each question must be 12–22 words max (one sentence)
+- Do NOT include any code blocks, bullet lists, or explanations
+- Do NOT paste the full user text into each question
+- Keep language supportive and non-judgmental
+
+Now produce the JSON.
+""".strip()
+
+def call_gemini(user_text: str):
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("Missing GEMINI_API_KEY environment variable.")
+
+    genai.configure(api_key=api_key)
+
+    # Choose a compact model for speed
+    model = genai.GenerativeModel("gemini-1.5-flash")
+
+    prompt = build_prompt(user_text)
+
+    resp = model.generate_content(prompt)
+    text = resp.text.strip()
+
+    # Expect JSON. Parse safely.
+    # The response should be pure JSON; if not, we’ll try a simple cleanup.
+    try:
+        import json
+        data = json.loads(text)
+        # Basic validation
+        if not all(k in data for k in ["A", "B", "C", "D"]):
+            raise ValueError("Missing keys in JSON.")
+        return {k: str(data[k]).strip() for k in ["A", "B", "C", "D"]}
+    except Exception:
+        # Fallback: attempt to extract JSON substring
+        import re, json
+        m = re.search(r"\{.*\}", text, re.S)
+        if not m:
+            raise
+        data = json.loads(m.group(0))
+        return {k: str(data[k]).strip() for k in ["A", "B", "C", "D"]}
+
 def main():
     st.set_page_config(page_title="HBDI 4-Quadrant Reset", layout="wide")
 
@@ -130,19 +101,20 @@ def main():
     try:
         logo = Image.open("logo.png")
         st.image(logo, width=160)
-    except Exception as e:
-        st.warning(f"Logo not found. Ensure logo.png is next to the app file. ({e})")
+    except Exception:
+        st.warning("logo.png not found. Add it next to streamlit_app.py.")
 
     st.title("HBDI 4-Quadrant Reset (1-minute prompt)")
-    st.caption("One short question per quadrant. The questions interpret your input—without repeating it verbatim.")
+    st.caption("Enter a sentence/feeling. Gemini generates one short question per quadrant—tailored to you.")
 
     thought = st.text_input(
         "Your sentence or feeling",
-        placeholder='e.g., "I feel uncertain about working with a colleague"'
+        placeholder='e.g., "I feel uncertain about working with a colleague on a deadline"'
     )
 
     if st.button("Generate 4 questions", type="primary"):
-        qs = short_questions(thought)
+        with st.spinner("Thinking (Gemini)…"):
+            qs = call_gemini(thought)
 
         col1, col2 = st.columns(2, gap="medium")
         with col1:

@@ -50,7 +50,7 @@ def main():
     st.markdown(
         """
         <div style="text-align:left; margin-bottom: 6px;">
-          <img src="logo.png" width="160" />
+          <img src="logo.png" width="500" />
         </div>
         """,
         unsafe_allow_html=True

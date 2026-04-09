@@ -133,11 +133,19 @@ def generate_questions(thought: str):
     ref = reference_phrase(keywords)
 
     return {
-        "A": f"Let’s get clear: what observable facts do I have about {ref} (vs what I’m assuming)?",
-        "B": f"What’s one practical next adjustment I can make about {ref} in the next 10 minutes?",
-        "C": f"What’s a creative reframe or new option for {ref} that could open momentum?",
-        "D": f"Who is impacted by {ref}—and who might be missing from the picture right now?"
+        # A: Analytic / Gentle Clarity
+        "A": f"Let’s steady this for a moment: what do you actually know is true about {ref} (not just what you fear)?",
+
+        # B: Practical / Next Steps
+        "B": f"One small step—what’s the kindest practical adjustment you could make next about {ref} in the next 10 minutes?",
+
+        # C: Creative / New Possibilities
+        "C": f"Give yourself some space: what’s a new angle or possibility for {ref} that you haven’t tried yet?",
+
+        # D: Relational / Who’s Involved
+        "D": f"Who needs to be brought into the picture for {ref} to shift—and who might be missing right now?"
     }
+
 
 
 

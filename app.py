@@ -66,33 +66,31 @@ def call_gemini(user_text: str):
     if not api_key:
         raise RuntimeError("Missing GEMINI_API_KEY environment variable.")
 
-    genai.configure(api_key=api_key)
+    model_id = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")  # you can override
 
-    # Choose a compact model for speed
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    genai.configure(api_key=api_key)
 
     prompt = build_prompt(user_text)
 
+    model = genai.GenerativeModel(model_id)
     resp = model.generate_content(prompt)
     text = resp.text.strip()
 
-    # Expect JSON. Parse safely.
-    # The response should be pure JSON; if not, we’ll try a simple cleanup.
+    # Expect JSON
+    import json, re
     try:
-        import json
         data = json.loads(text)
-        # Basic validation
-        if not all(k in data for k in ["A", "B", "C", "D"]):
-            raise ValueError("Missing keys in JSON.")
-        return {k: str(data[k]).strip() for k in ["A", "B", "C", "D"]}
     except Exception:
-        # Fallback: attempt to extract JSON substring
-        import re, json
         m = re.search(r"\{.*\}", text, re.S)
         if not m:
-            raise
+            raise RuntimeError("Model did not return JSON.")
         data = json.loads(m.group(0))
-        return {k: str(data[k]).strip() for k in ["A", "B", "C", "D"]}
+
+    if not all(k in data for k in ["A", "B", "C", "D"]):
+        raise RuntimeError("JSON missing required quadrant keys.")
+
+    return {k: str(data[k]).strip() for k in ["A", "B", "C", "D"]}
+
 
 def main():
     st.set_page_config(page_title="HBDI 4-Quadrant Reset", layout="wide")

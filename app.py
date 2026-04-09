@@ -3,10 +3,10 @@ import textwrap
 from PIL import Image
 
 # Colors by position requirement:
-# Top-left (blue)
-# Bottom-left (green)
-# Top-right (yellow)
-# Bottom-right (red)
+# Top-left (blue) = Analytical
+# Bottom-left (green) = Practical
+# Top-right (yellow) = Creative
+# Bottom-right (red) = Relational
 
 COLORS = {
     "A": {"bg": "#2E6DA4", "fg": "white", "label": "Analytical"},   # Blue

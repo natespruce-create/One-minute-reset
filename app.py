@@ -141,7 +141,18 @@ def main():
         placeholder='e.g., "I feel uncertain about working with a colleague on a deadline"'
     )
 
-    model_id = os.getenv("GEMINI_MODEL", "gemini-3.1-flash")  # change to your exact Gemini 3.1 id if needed
+    def get_model_id_candidates():
+    # Try common Gemini 3.1 ids
+    return [
+        os.getenv("GEMINI_MODEL", "").strip(),
+        "gemini-3.1-flash",
+        "gemini-3.1-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+    ]
+
 
     if st.button("Generate 4 questions", type="primary"):
         if not thought.strip():

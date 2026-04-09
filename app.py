@@ -28,17 +28,8 @@ QUADRANT_PHRASES = {
 
 
 def get_model_id_candidates():
-    # If you set GEMINI_MODEL it goes first.
-    # Otherwise it tries a set of common ids.
-    return [
-        os.getenv("GEMINI_MODEL", "").strip(),
-        "gemini-3.1-flash",
-        "gemini-3.1-pro",
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-    ]
+    return ["gemini-3.1-flash-lite-preview"]
+
 
 
 def build_prompt(user_text: str) -> str:

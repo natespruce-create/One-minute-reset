@@ -16,10 +16,10 @@ COLORS = {
 }
 
 QUADRANT_PHRASES = {
-    "A": "Gentle Clarity (Analytical)",
-    "B": "Next Steps (Practical)",
-    "C": "New Possibilities (Creative)",
-    "D": "Who’s Involved (Relational)",
+    "A": "Gentle Clarity",
+    "B": "Next Steps",
+    "C": "New Possibilities",
+    "D": "Who’s Involved",
 }
 
 def generate_questions(thought: str):

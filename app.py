@@ -6,6 +6,7 @@ import streamlit as st
 from PIL import Image
 import google.generativeai as genai
 
+
 # Colors by position requirement:
 # Top-left (blue) = Analytical
 # Bottom-left (green) = Practical
@@ -24,6 +25,21 @@ QUADRANT_PHRASES = {
     "C": "New Possibilities",
     "D": "Who’s Involved",
 }
+
+
+def get_model_id_candidates():
+    # If you set GEMINI_MODEL it goes first.
+    # Otherwise it tries a set of common ids.
+    return [
+        os.getenv("GEMINI_MODEL", "").strip(),
+        "gemini-3.1-flash",
+        "gemini-3.1-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+    ]
+
 
 def build_prompt(user_text: str) -> str:
     return f"""
@@ -56,18 +72,18 @@ Return JSON:
 }}
 """.strip()
 
+
 @st.cache_data(show_spinner=False)
-def call_gemini_cached(user_text: str, model_id: str = "") -> dict:
+def call_gemini_cached(user_text: str) -> dict:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("Missing GEMINI_API_KEY environment variable.")
 
     genai.configure(api_key=api_key)
 
-    candidates = [x for x in get_model_id_candidates() if x]  # remove blanks
-    last_err = None
-
     prompt = build_prompt(user_text)
+    candidates = [x for x in get_model_id_candidates() if x]
+    last_err = None
 
     for mid in candidates:
         try:
@@ -80,35 +96,36 @@ def call_gemini_cached(user_text: str, model_id: str = "") -> dict:
                     max_output_tokens=450,
                 ),
             )
+
             text = (resp.text or "").strip()
 
+            # Parse JSON strictly
             data = json.loads(text)
+
+            # Validate keys and format
             for k in ["A", "B", "C", "D"]:
                 if k not in data:
                     raise RuntimeError(f"Gemini JSON missing key: {k}")
                 if not isinstance(data[k], str):
                     raise RuntimeError(f"Gemini value for {k} must be a string")
-                if not data[k].strip().endswith("?"):
-                    data[k] = data[k].strip() + "?"
+                q = data[k].strip()
+                if not q.endswith("?"):
+                    q = q + "?"
+                data[k] = q
+
+                # Word count sanity (optional)
+                wc = len(re.findall(r"\b[\w']+\b", data[k]))
+                if wc < 12 or wc > 22:
+                    raise RuntimeError(f"Question for {k} not within 12–22 words.")
+
             return {k: data[k].strip() for k in ["A", "B", "C", "D"]}
+
         except Exception as e:
             last_err = e
             continue
 
     raise RuntimeError(f"All model attempts failed. Last error: {last_err}")
 
-
-    # Validate keys
-    for k in ["A", "B", "C", "D"]:
-        if k not in data:
-            raise RuntimeError(f"Gemini JSON missing key: {k}")
-        if not isinstance(data[k], str):
-            raise RuntimeError(f"Gemini value for {k} must be a string")
-        # simple sanity check: must end with '?'
-        if not data[k].strip().endswith("?"):
-            data[k] = data[k].strip() + "?"
-
-    return {k: data[k].strip() for k in ["A", "B", "C", "D"]}
 
 def card_html(q_key: str, prompt: str):
     c = COLORS[q_key]
@@ -134,6 +151,7 @@ def card_html(q_key: str, prompt: str):
     </div>
     """
 
+
 def main():
     st.set_page_config(page_title="HBDI 4-Quadrant Reset", layout="wide")
 
@@ -149,21 +167,8 @@ def main():
 
     thought = st.text_input(
         "Your sentence or feeling",
-        placeholder='e.g., "I feel uncertain about working with a colleague on a deadline"'
+        placeholder='e.g., "I feel stuck choosing between two options"'
     )
-
-    def get_model_id_candidates():
-    # Try common Gemini 3.1 ids
-    return [
-        os.getenv("GEMINI_MODEL", "").strip(),
-        "gemini-3.1-flash",
-        "gemini-3.1-pro",
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-    ]
-
 
     if st.button("Generate 4 questions", type="primary"):
         if not thought.strip():
@@ -171,13 +176,13 @@ def main():
             return
 
         with st.spinner("Thinking with Gemini..."):
-            qs = call_gemini_cached(thought.strip(), model_id)
+            qs = call_gemini_cached(thought.strip())
 
-        # Layout: 2 rows
+        # 2 rows layout
         top_left, top_right = st.columns(2, gap="medium")
         bottom_left, bottom_right = st.columns(2, gap="medium")
 
-        # Top row: A (blue Analytical) left, C (yellow Creative) right
+        # Top row: A blue (Analytical) left, C yellow (Creative) right
         with top_left:
             st.markdown(card_html("A", qs["A"]), unsafe_allow_html=True)
         with top_right:
@@ -185,14 +190,15 @@ def main():
 
         st.write("")
 
-        # Bottom row: B (green Practical) left, D (red Relational) right
+        # Bottom row: B green (Practical) left, D red (Relational) right
         with bottom_left:
             st.markdown(card_html("B", qs["B"]), unsafe_allow_html=True)
         with bottom_right:
             st.markdown(card_html("D", qs["D"]), unsafe_allow_html=True)
 
         st.divider()
-        st.success("Scan A → C → B → D, then pick one to explore first.")
+        st.success("Scan A → C → B → D (by position), then pick one to explore first.")
+
 
 if __name__ == "__main__":
     main()

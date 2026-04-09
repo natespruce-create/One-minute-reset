@@ -20,9 +20,9 @@ def generate_questions(thought: str):
 
 def card_html(q_key: str, prompt: str):
     c = COLORS[q_key]
-    wrapped = textwrap.fill(prompt, width=88)
+    wrapped = textwrap.fill(prompt, width=92)
 
-    # "Question" only (prevents repeating Analytic/Practical/etc twice)
+    # Return ONLY HTML string
     return f"""
     <div style="
         background-color: {c['bg']};
@@ -33,13 +33,11 @@ def card_html(q_key: str, prompt: str):
         box-shadow: 0 2px 10px rgba(0,0,0,0.12);
         border: 1px solid rgba(255,255,255,0.12);
     ">
-      <div style="font-weight: 800; font-size: 14px; margin-bottom: 8px; opacity: 0.95;">
+      <div style="font-weight: 800; font-size: 14px; margin-bottom: 10px; opacity: 0.95;">
         {q_key} — {c['label']}
       </div>
 
-      <div style="font-size: 15px; line-height: 1.45; white-space: normal;">
-        <span style="font-weight: 750;">Question</span>
-        <div style="height: 8px;"></div>
+      <div style="font-size: 15px; line-height: 1.5; white-space: normal;">
         {wrapped}
       </div>
     </div>

@@ -31,8 +31,6 @@ def get_model_id_candidates():
     return [os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")]
 
 
-
-
 def build_prompt(user_text: str) -> str:
     return f"""
 You are an HBDI coach creating a 1-minute “4-Quadrant Reset”.

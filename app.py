@@ -18,30 +18,32 @@ def generate_questions(thought: str):
         "D": f'If you could take a fresh, creative step—what else might be possible with “{thought}” (another angle, option, or constraint)?'
     }
 
-def card_html(q_key: str, prompt: str):
+def card_block(q_key: str, prompt: str):
     c = COLORS[q_key]
     wrapped = textwrap.fill(prompt, width=92)
 
-    # Return ONLY HTML string
-    return f"""
-    <div style="
-        background-color: {c['bg']};
-        color: {c['fg']};
-        border-radius: 14px;
-        padding: 16px 18px;
-        min-height: 155px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.12);
-        border: 1px solid rgba(255,255,255,0.12);
-    ">
-      <div style="font-weight: 800; font-size: 14px; margin-bottom: 10px; opacity: 0.95;">
-        {q_key} — {c['label']}
-      </div>
-
-      <div style="font-size: 15px; line-height: 1.5; white-space: normal;">
-        {wrapped}
-      </div>
-    </div>
-    """
+    # Use Streamlit primitives + CSS for the outer colored card.
+    st.markdown(
+        f"""
+        <div style="
+            background-color: {c['bg']};
+            color: {c['fg']};
+            border-radius: 14px;
+            padding: 16px 18px;
+            min-height: 155px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+            border: 1px solid rgba(255,255,255,0.12);
+        ">
+          <div style="font-weight: 800; font-size: 14px; margin-bottom: 10px; opacity: 0.95;">
+            {q_key} — {c['label']}
+          </div>
+          <div style="font-size: 15px; line-height: 1.5;">
+            {wrapped}
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 def main():
     st.set_page_config(page_title="HBDI 4-Quadrant Reset", layout="wide")
@@ -50,7 +52,7 @@ def main():
     st.markdown(
         """
         <div style="text-align:left; margin-bottom: 6px;">
-          <img src="logo.png" width="500" />
+          <img src="logo.png" width="160" />
         </div>
         """,
         unsafe_allow_html=True
@@ -69,15 +71,15 @@ def main():
 
         col1, col2 = st.columns(2, gap="medium")
         with col1:
-            st.markdown(card_html("A", qs["A"]), unsafe_allow_html=True)
+            card_block("A", qs["A"])
         with col2:
-            st.markdown(card_html("B", qs["B"]), unsafe_allow_html=True)
+            card_block("B", qs["B"])
 
         col3, col4 = st.columns(2, gap="medium")
         with col3:
-            st.markdown(card_html("C", qs["C"]), unsafe_allow_html=True)
+            card_block("C", qs["C"])
         with col4:
-            st.markdown(card_html("D", qs["D"]), unsafe_allow_html=True)
+            card_block("D", qs["D"])
 
         st.divider()
         st.success("Take 30–60 seconds. Scan each question, then choose just one to explore first.")

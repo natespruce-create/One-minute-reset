@@ -62,27 +62,83 @@ def pick_entities(text: str):
     # Keep at most 3
     return keywords[:3]
 
+import re
+
+EMOTION = {"stuck","uncertain","overwhelmed","anxious","worried","panicked","frustrated","angry","lost","torn","depressed","sad","down"}
+DECISION = {"choose","decision","decide","between","options","option","tradeoff","which","whether","decision-making"}
+PRESSURE = {"deadline","pressure","limited","time","money","constraints","risk","can't","cant","cannot"}
+PEOPLE = {"colleague","team","manager","client","customer","partner","people","trust","conflict"}
+
+def pick_keywords(text: str):
+    t = text.lower()
+
+    keywords = []
+    # Prefer the “useful” categories first
+    for group in (["emotion", EMOTION], ["decision", DECISION], ["pressure", PRESSURE], ["people", PEOPLE]):
+        _, vocab = group
+        for k in vocab:
+            if k in t and k not in keywords:
+                keywords.append(k)
+            if len(keywords) >= 3:
+                break
+        if len(keywords) >= 3:
+            break
+
+    # fallback: pick a couple meaningful tokens
+    if not keywords:
+        tokens = re.findall(r"[a-zA-Z']+", t)
+        tokens = [x for x in tokens if len(x) >= 4]
+        for x in tokens:
+            if x not in keywords:
+                keywords.append(x)
+            if len(keywords) >= 2:
+                break
+
+    return keywords[:3]
+
+def reference_phrase(keywords):
+    """
+    Turn extracted keywords into a short, grammatical reference phrase
+    (without forcing "this depressed" style output).
+    """
+    if not keywords:
+        return "this situation"
+
+    # If the first keyword is an emotion-feeling, avoid awkward "this depressed"
+    if keywords[0] in EMOTION:
+        # If we also have a workplace cue, blend it
+        if len(keywords) > 1 and keywords[1] in PEOPLE:
+            return f"this feeling and workplace dynamic"
+        if len(keywords) > 1 and keywords[1] in PRESSURE:
+            return f"this feeling under pressure"
+        return "this feeling"
+
+    # If we have a people cue
+    if any(k in PEOPLE for k in keywords):
+        return "this working dynamic"
+
+    # If we have a pressure cue
+    if any(k in PRESSURE for k in keywords):
+        return "this pressured situation"
+
+    # If we have decision cue
+    if any(k in DECISION for k in keywords):
+        return "this decision"
+
+    return "this situation"
+
 def generate_questions(thought: str):
     thought = (thought or "").strip() or "I feel stuck"
-    kws = pick_entities(thought)
-
-    # Create a friendly reference phrase without echoing the full text
-    if kws:
-        if len(kws) == 1:
-            ref = f"this {kws[0]}"
-        elif len(kws) == 2:
-            ref = f"this {kws[0]} and {kws[1]}"
-        else:
-            ref = f"this {kws[0]}, {kws[1]}, and {kws[2]}"
-    else:
-        ref = "this situation"
+    keywords = pick_keywords(thought)
+    ref = reference_phrase(keywords)
 
     return {
         "A": f"Let’s get clear: what observable facts do I have about {ref} (vs what I’m assuming)?",
         "B": f"What’s one practical next adjustment I can make about {ref} in the next 10 minutes?",
-        "C": f"Who is impacted by {ref}—and whose perspective might be missing right now?",
-        "D": f"What’s a creative reframing or new option for {ref} that could open momentum?"
+        "C": f"What’s a creative reframe or new option for {ref} that could open momentum?",
+        "D": f"Who is impacted by {ref}—and who might be missing from the picture right now?"
     }
+
 
 
 

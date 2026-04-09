@@ -1,5 +1,6 @@
 import streamlit as st
 import textwrap
+import re
 from PIL import Image
 
 # Colors by position requirement:
@@ -22,15 +23,67 @@ QUADRANT_PHRASES = {
     "D": "Who’s Involved",
 }
 
+STOPWORDS = {
+    "i","im","i'm","feel","feels","feeling","about","the","a","an","and","or","to","of","in","on","with","for","from",
+    "this","that","it","is","are","was","were","be","being","as","my","our","your","their","they","he","she",
+    "me","we","you","at","but","so","very","really","just","up","right","now"
+}
+
+EMOTION = ["stuck", "uncertain", "overwhelmed", "anxious", "worried", "panicked", "frustrated", "angry", "lost", "torn"]
+DECISION = ["choose", "decision", "decide", "between", "options", "option", "tradeoff", "which", "whether", "decision-making"]
+PRESSURE = ["deadline", "pressure", "limited", "time", "money", "constraints", "risk", "cant", "can't", "cannot"]
+PEOPLE = ["colleague", "team", "manager", "client", "customer", "partner", "people", "trust", "conflict"]
+
+def pick_entities(text: str):
+    t = text.lower()
+
+    # Collect keyword matches (max 3)
+    keywords = []
+    def add_if_present(key_list):
+        for k in key_list:
+            if k in t and k not in keywords:
+                keywords.append(k)
+    add_if_present(EMOTION)
+    add_if_present(DECISION)
+    add_if_present(PRESSURE)
+    add_if_present(PEOPLE)
+
+    # If nothing matched, fall back to a couple of meaningful nouns-ish tokens
+    if not keywords:
+        tokens = re.findall(r"[a-zA-Z']+", t)
+        tokens = [x for x in tokens if x not in STOPWORDS and len(x) >= 4]
+        # keep unique, first few
+        for x in tokens:
+            if x not in keywords:
+                keywords.append(x)
+            if len(keywords) >= 2:
+                break
+
+    # Keep at most 3
+    return keywords[:3]
+
 def generate_questions(thought: str):
-    # Do NOT paste the user’s sentence back verbatim into the questions.
-    # We’ll keep it warm, short, and interpretive.
+    thought = (thought or "").strip() or "I feel stuck"
+    kws = pick_entities(thought)
+
+    # Create a friendly reference phrase without echoing the full text
+    if kws:
+        if len(kws) == 1:
+            ref = f"this {kws[0]}"
+        elif len(kws) == 2:
+            ref = f"this {kws[0]} and {kws[1]}"
+        else:
+            ref = f"this {kws[0]}, {kws[1]}, and {kws[2]}"
+    else:
+        ref = "this situation"
+
     return {
-        "A": "Let’s get clear and gentle: what do you know for sure (observable facts) right now, rather than assumptions?",
-        "B": "What’s one kind, practical next adjustment you can make right now to ease the stuck feeling?",
-        "C": "If you could take a fresh, creative step—what else might be possible right now (another angle, option, or constraint)?",
-        "D": "Who might be affected by this—who could be missing from the picture (and what might they be feeling)?",
+        "A": f"Let’s get clear: what observable facts do I have about {ref} (vs what I’m assuming)?",
+        "B": f"What’s one practical next adjustment I can make about {ref} in the next 10 minutes?",
+        "C": f"Who is impacted by {ref}—and whose perspective might be missing right now?",
+        "D": f"What’s a creative reframing or new option for {ref} that could open momentum?"
     }
+
 
 
 def card_html(q_key: str, prompt: str):

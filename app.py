@@ -57,35 +57,46 @@ Return JSON:
 """.strip()
 
 @st.cache_data(show_spinner=False)
-def call_gemini_cached(user_text: str, model_id: str) -> dict:
+def call_gemini_cached(user_text: str, model_id: str = "") -> dict:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("Missing GEMINI_API_KEY environment variable.")
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_id)
+
+    candidates = [x for x in get_model_id_candidates() if x]  # remove blanks
+    last_err = None
 
     prompt = build_prompt(user_text)
-    resp = model.generate_content(
-        prompt,
-        generation_config=genai.types.GenerationConfig(
-            temperature=0.7,
-            top_p=0.95,
-            max_output_tokens=450,
-        ),
-    )
 
-    text = (resp.text or "").strip()
+    for mid in candidates:
+        try:
+            model = genai.GenerativeModel(mid)
+            resp = model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.7,
+                    top_p=0.95,
+                    max_output_tokens=450,
+                ),
+            )
+            text = (resp.text or "").strip()
 
-    # Parse JSON strictly
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        # Try to recover JSON if Gemini wrapped it
-        m = re.search(r"\{.*\}", text, re.S)
-        if not m:
-            raise RuntimeError("Gemini did not return JSON.")
-        data = json.loads(m.group(0))
+            data = json.loads(text)
+            for k in ["A", "B", "C", "D"]:
+                if k not in data:
+                    raise RuntimeError(f"Gemini JSON missing key: {k}")
+                if not isinstance(data[k], str):
+                    raise RuntimeError(f"Gemini value for {k} must be a string")
+                if not data[k].strip().endswith("?"):
+                    data[k] = data[k].strip() + "?"
+            return {k: data[k].strip() for k in ["A", "B", "C", "D"]}
+        except Exception as e:
+            last_err = e
+            continue
+
+    raise RuntimeError(f"All model attempts failed. Last error: {last_err}")
+
 
     # Validate keys
     for k in ["A", "B", "C", "D"]:
